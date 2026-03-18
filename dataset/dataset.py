@@ -37,7 +37,6 @@ def collate_fn(
     resize_list = []
     questions_list = []
     sampled_classes_list = []
-    centroid_texts_list = []
     offset_list = [0]
     sampled_str_ids_list = []
     sampled_frames_list = []
@@ -55,7 +54,6 @@ def collate_fn(
         sampled_classes,
         sampled_str_ids,
         sampled_frames,
-        centroid_texts,
         inference,
     ) in batch:
         image_path_list.append(image_path)
@@ -67,7 +65,6 @@ def collate_fn(
         resize_list.append(resizes)
         questions_list.append(questions)
         sampled_classes_list.append(sampled_classes)
-        centroid_texts_list.append(centroid_texts)
         sampled_str_ids_list.append(sampled_str_ids)
         sampled_frames_list.append(sampled_frames)
         cnt += len(conversations)
@@ -156,7 +153,6 @@ def collate_fn(
         "offset": torch.LongTensor(offset_list),
         "questions_list": questions_list,
         "sampled_classes_list": sampled_classes_list,
-        "centroid_texts": centroid_texts_list,
         "inference": inferences[0],
         "conversation_list": conversation_list,
         "sampled_str_ids_list": sampled_str_ids_list,
