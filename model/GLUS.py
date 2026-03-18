@@ -3,7 +3,6 @@ Adapted from https://github.com/dvlab-research/LISA/blob/main/model/LISA.py
 """
 
 from typing import List
-import re
 
 import numpy as np
 import torch
@@ -177,12 +176,6 @@ class GLUSForCausalLM(LlavaLlamaForCausalLM):
 
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
-        self.traj_mlp = nn.Sequential(
-            nn.Linear(2, config.hidden_size),
-            nn.ReLU(inplace=True),
-            nn.Linear(config.hidden_size, config.hidden_size),
-        )
-
         # Initialize weights and apply final processing
         self.post_init()
         
@@ -205,79 +198,6 @@ class GLUSForCausalLM(LlavaLlamaForCausalLM):
             self.contrastive_loss = ContrastiveLoss(kwargs.pop("base_image_dir", None), taw=0.07)
         else:
             self.contrastive_loss = None
-
-    def _parse_centroid(self, centroid_text):
-        if centroid_text is None:
-            return None
-        if not isinstance(centroid_text, str):
-            return None
-        matched = re.findall(r"-?\d+", centroid_text)
-        if len(matched) < 2:
-            return None
-        x = float(matched[0]) / 1000.0
-        y = float(matched[1]) / 1000.0
-        return [x, y]
-
-    def _expand_centroids_by_offset(self, centroid_texts, offset):
-        per_row_centroids = []
-        if centroid_texts is None:
-            return per_row_centroids
-
-        if isinstance(offset, torch.Tensor):
-            offset_vals = offset.detach().cpu().tolist()
-        else:
-            offset_vals = offset
-
-        for sample_idx in range(len(offset_vals) - 1):
-            left = offset_vals[sample_idx]
-            right = offset_vals[sample_idx + 1]
-            sample_centroids = centroid_texts[sample_idx] if sample_idx < len(centroid_texts) else []
-            for row_idx in range(left, right):
-                class_idx = row_idx - left
-                if class_idx < len(sample_centroids):
-                    per_row_centroids.append(sample_centroids[class_idx])
-                else:
-                    per_row_centroids.append([])
-        return per_row_centroids
-
-    def _inject_trajectory_hidden(self, hidden_states, seg_token_mask, per_row_centroids):
-        if per_row_centroids is None or len(per_row_centroids) == 0:
-            return hidden_states
-
-        hidden_states = hidden_states.clone()
-        for row_idx in range(min(hidden_states.shape[0], len(per_row_centroids))):
-            coords = per_row_centroids[row_idx]
-            if coords is None or len(coords) == 0:
-                continue
-
-            parsed_coords = []
-            for coord_text in coords:
-                parsed = self._parse_centroid(coord_text)
-                if parsed is not None:
-                    parsed_coords.append(parsed)
-
-            if len(parsed_coords) == 0:
-                continue
-
-            seg_positions = torch.nonzero(seg_token_mask[row_idx], as_tuple=False).flatten()
-            if seg_positions.numel() == 0:
-                continue
-
-            usable_num = min(seg_positions.numel(), len(parsed_coords))
-            coord_tensor = torch.tensor(
-                parsed_coords[:usable_num],
-                dtype=hidden_states.dtype,
-                device=hidden_states.device,
-            )
-            traj_embed = self.traj_mlp(coord_tensor)
-            hidden_states[row_idx, seg_positions[:usable_num]] = (
-                hidden_states[row_idx, seg_positions[:usable_num]] + traj_embed
-            )
-
-        return hidden_states
-    
-    #用于因果语言建模的完整模型，继承自LlavaLlamaForCausalLM
-
 
     def get_visual_embs(self, pixel_values: torch.FloatTensor, frame_id: int, bt_sz: List[int], mem_stride = 1):
         #使用SAM模型提取多尺度视觉特征
@@ -388,8 +308,8 @@ class GLUSForCausalLM(LlavaLlamaForCausalLM):
             return super().forward(**kwargs)
         return self.generate_masks(**kwargs)
   
-   # 生成分割掩码流程 
-    def generate_masks(   
+   # 生成分割掩码流程
+    def generate_masks(
         self,
         images: torch.FloatTensor,
         images_clip: torch.FloatTensor,
@@ -403,7 +323,6 @@ class GLUSForCausalLM(LlavaLlamaForCausalLM):
         rel_pos_list: List[int],
         sampled_str_ids_list: List[List[str]],
         sampled_frames_list: List[List[str]],
-        centroid_texts=None,
         inference: bool = False,
         context_frame_num: int = 4,
         question_frame_num: int = 4,
@@ -477,13 +396,6 @@ class GLUSForCausalLM(LlavaLlamaForCausalLM):
         hidden_states = []
 
         projected_hidden = output_hidden_states[-1]
-        if centroid_texts is not None:
-            per_row_centroids = self._expand_centroids_by_offset(centroid_texts, offset)
-            projected_hidden = self._inject_trajectory_hidden(
-                projected_hidden,
-                seg_token_mask,
-                per_row_centroids,
-            )
 
         assert len(self.model.text_hidden_fcs) == 1
         hidden_states.append(self.model.text_hidden_fcs[0](projected_hidden))
@@ -689,7 +601,6 @@ class GLUSForCausalLM(LlavaLlamaForCausalLM):
         question_frame_num=4,
         mem_stride=1,
         decode_iter=False,
-        trajectory_coords=None,
     ):
         
         with torch.no_grad():
@@ -770,16 +681,6 @@ class GLUSForCausalLM(LlavaLlamaForCausalLM):
             hidden_states = []
 
             projected_hidden = output_hidden_states
-            if trajectory_coords is not None:
-                if len(projected_hidden.shape) == 3 and projected_hidden.shape[0] == 1:
-                    per_row_centroids = [trajectory_coords]
-                else:
-                    per_row_centroids = trajectory_coords
-                projected_hidden = self._inject_trajectory_hidden(
-                    projected_hidden,
-                    seg_token_mask,
-                    per_row_centroids,
-                )
 
             assert len(self.model.text_hidden_fcs) == 1
             hidden_states.append(self.model.text_hidden_fcs[0](projected_hidden))

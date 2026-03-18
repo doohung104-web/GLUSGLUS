@@ -489,13 +489,6 @@ def train(
                 train_iter = iter(train_loader)
                 input_dict = next(train_iter)
 
-            if global_step == 0 and i == 0 and "centroid_texts" in input_dict:
-                sample = input_dict["centroid_texts"][0]
-                print(
-                    "[DEBUG] centroid_texts sample:",
-                    sample[:2] if len(sample) > 1 else sample,
-                )
-
             data_time.update(time.time() - end)
             input_dict = dict_to_cuda(input_dict)
 

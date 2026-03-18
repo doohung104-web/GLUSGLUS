@@ -37,7 +37,7 @@ from .refyoutube_vos import load_refyoutube_json
 from .davis17 import load_davis17_json
 from .revos import load_revos_json
 from .lvvis import load_lvvis_json
-from utils.traj import extract_scaled_centroid  # 导入函数
+
 
     
 class ReferVideoSegDataset(Dataset):
@@ -312,13 +312,6 @@ class ReferVideoSegDataset(Dataset):
             raise ValueError(f"No such ds {ds}.")
         label = torch.ones(masks.shape[2], masks.shape[3]) * self.ignore_label
 
-        centroid_texts = []
-        for class_mask in masks:
-            class_centroids = []
-            for frame_mask in class_mask:
-                class_centroids.append(extract_scaled_centroid(frame_mask.numpy()))
-            centroid_texts.append(class_centroids)
-        
         return (
             image_path,
             images,
@@ -331,5 +324,4 @@ class ReferVideoSegDataset(Dataset):
             sampled_classes,
             sampled_str_ids,
             sampled_frames,
-            centroid_texts,
         )

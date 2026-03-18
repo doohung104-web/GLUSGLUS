@@ -24,7 +24,7 @@ from dataset.refyoutube_vos import load_refyoutube_json
 from dataset.revos import load_revos_json
 from dataset.davis17 import load_davis17_json
 from dataset.reasonvos import load_reason_json
-from utils.traj import extract_scaled_centroid
+
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="GLUS eval")
@@ -340,8 +340,7 @@ def inference_frames(args, model, clip_image_processor, transform, tokenizer, im
     i = 0
     masks_list = []
     mask_confidence_score_list = []
-    trajectory_history = []
-    
+
     # pre-dealing video frames
     
     full_images, full_images_clip = [], []
@@ -446,13 +445,12 @@ def inference_frames(args, model, clip_image_processor, transform, tokenizer, im
             original_size_list,
             rel_pos_list=list(range(max(0, i - question_frame_num), i)),
             mask_clips_list=None,
-            max_new_tokens=1,  
+            max_new_tokens=1,
             tokenizer=tokenizer,
             context_frame_num=context_frame_num,
             question_frame_num=curr_q_num,
             mem_stride=args.mem_stride,
             decode_iter=True,
-            trajectory_coords=trajectory_history[-question_frame_num:],
         )
         
         output_ids = output_ids[0][output_ids[0] != IMAGE_TOKEN_INDEX]
@@ -471,13 +469,9 @@ def inference_frames(args, model, clip_image_processor, transform, tokenizer, im
         
         assert len(pred_masks) == 1
         assert len(pred_masks[0]) == 1
-            
+
         masks_list.append((pred_masks[-1][0] > 0).int())
 
-        current_centroid = extract_scaled_centroid(masks_list[-1].cpu().numpy())
-        if current_centroid:
-            trajectory_history.append(current_centroid)
-        
         conv.messages[-1][-1] = text_output.split("ASSISTANT: ")[-1].split("</s>")[0] + '.'
         
     return text_output, pred_masks, masks_list, mask_confidence_score_list
